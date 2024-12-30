@@ -1,0 +1,125 @@
+import json
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+import time
+import random
+
+
+def scrape_hsinchu_mcdonalds_reviews():
+    # 麥當勞分店列表
+    mcdonalds_locations = [
+        "食品餐廳",
+        "西大餐廳",
+        "經國店",
+        "經國二餐廳",
+        "南大餐廳",
+        "大潤發餐廳",
+        "中正餐廳",
+        "光復餐廳",
+        "光復二餐廳",
+        "交大餐廳",
+        "清大餐廳",
+        "關新餐廳",
+        "台積電餐廳",
+        "竹北光明餐廳",
+        "竹北自強南餐廳",
+        "竹北中華餐廳",
+        "竹北文興餐廳",
+        "竹東長春餐廳",
+        "湖口中山餐廳",
+        "新豐新興餐廳",
+        "關西服務區餐廳"
+    ]
+
+    # 啟動瀏覽器
+    driver = webdriver.Chrome()
+    driver.get("https://www.google.com/maps")
+
+    wait = WebDriverWait(driver, 10)
+    all_reviews = []
+    review_id = 1
+
+    print("正在處理新竹地區麥當勞分店...")
+
+    for store_name in mcdonalds_locations:
+        try:
+            print(f"正在處理分店: {store_name}...")
+            search_url = f"https://www.google.com/maps/search/麥當勞 {store_name}"
+            driver.get(search_url)
+            time.sleep(5)
+
+            # 獲取分店名稱與地址
+            displayed_store_name = wait.until(EC.presence_of_element_located((By.CLASS_NAME, "DUwDvf"))).text
+            try:
+                store_address = driver.find_element(By.CLASS_NAME, "Io6YTe").text
+            except Exception:
+                store_address = "無地址"
+
+            # 點擊評論區
+            try:
+                review_tab = driver.find_element(By.XPATH, "//button[contains(@aria-label, '評論')]")
+                review_tab.click()
+                time.sleep(5)
+            except Exception:
+                print(f"評論頁面未找到，跳過該分店: {store_name}")
+                continue
+
+            # 動態載入更多評論
+            scrollable_review_div = wait.until(EC.presence_of_element_located((By.CLASS_NAME, "m6QErb")))
+            last_review_count = 0
+            scroll_attempts = 0
+            max_scroll_attempts = 100  # 增加最大滑動次數
+
+            while scroll_attempts < max_scroll_attempts:
+                driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", scrollable_review_div)
+                time.sleep(random.uniform(1, 2))
+                reviews = driver.find_elements(By.CSS_SELECTOR, 'div[class="MyEned"]')
+                current_review_count = len(reviews)
+
+                if current_review_count == last_review_count:
+                    print(f"評論已加載完畢，共 {current_review_count} 則。")
+                    break
+                last_review_count = current_review_count
+                scroll_attempts += 1
+
+            # 點擊所有「顯示更多」按鈕
+            expand_buttons = driver.find_elements(By.XPATH, "//button[contains(@aria-label, '顯示更多')]")
+            for button in expand_buttons:
+                try:
+                    button.click()
+                    time.sleep(1)
+                except Exception:
+                    continue
+
+            # 獲取所有評論
+            for review in reviews:
+                try:
+                    review_text = review.text
+                except Exception:
+                    review_text = "無評論內容"
+
+                all_reviews.append({
+                    "ID": review_id,
+                    "Store Name": displayed_store_name,
+                    "Address": store_address,
+                    "Review": review_text
+                })
+                review_id += 1
+
+        except Exception as e:
+            print(f"處理分店時發生錯誤: {e}")
+            continue
+
+    # 關閉瀏覽器
+    driver.quit()
+
+    # 儲存為 JSON
+    with open("hsinchu_mcdonalds_reviews.json", "w", encoding="utf-8") as json_file:
+        json.dump(all_reviews, json_file, ensure_ascii=False, indent=4)
+    print("完成！結果儲存至 hsinchu_mcdonalds_reviews.json")
+
+
+# 執行爬蟲
+scrape_hsinchu_mcdonalds_reviews()
